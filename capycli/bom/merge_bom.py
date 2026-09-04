@@ -55,8 +55,7 @@ If there is the need to do better or a great idea on how to do better, we can ch
 
 
 class MergeBom(capycli.common.script_base.ScriptBase):
-    """Merge two SBOM files.
-    """
+    """Merge multiple SBOM files."""
 
     @staticmethod
     def are_same(c1: Component, c2: Component, deep: bool = False) -> bool:
@@ -93,7 +92,8 @@ class MergeBom(capycli.common.script_base.ScriptBase):
         return None
 
     def merge_boms(self, bom_old: Bom, bom_new: Bom) -> Bom:
-        """Merges two SBOMs."""
+        """Merges two SBOMs. Note that ``bom_old`` gets modified in place and is also
+        the returned result, i.e. its metadata is the metadata of the merged SBOM."""
 
         # step 1: merge components
         component_new: Component
@@ -123,54 +123,67 @@ class MergeBom(capycli.common.script_base.ScriptBase):
 
         print_text(
             "\n" + capycli.get_app_signature() +
-            " - Merge two SBOM files.\n")
+            " - Merge SBOM files.\n")
 
         if args.help:
-            print("usage: CaPyCli bom merge [-h] [-v] bomfile1 bomfile2 [outputfile]")
+            print("usage: CaPyCli bom merge [-h] [-v] bomfile1 bomfile2 [bomfile3 ...] [-o OUTPUTFILE]")
             print("")
             print("positional arguments:")
-            print("    bomfile1              first bill of material, JSON")
-            print("    bomfile2              second bill of material, JSON")
+            print("    bomfile1 bomfile2 ... two or more bills of material, JSON")
             print("")
             print("optional arguments:")
             print("    -h, --help            show this help message and exit")
-            print("    outputfile            if outputfile is specified the new SBOM will be written")
-            print("                          to this file. Default is overwrite bomfile1")
+            print("    -o OUTPUTFILE         the merged SBOM will be written to this file,")
+            print("                          default is to overwrite bomfile1")
+            print("")
+            print("For backwards compatibility `bom merge bomfile1 bomfile2 outputfile` is")
+            print("still supported. To merge more than two SBOMs you have to use -o.")
             return
 
         if len(args.command) < 4:
             print_red("Not enough input files specified!")
             sys.exit(ResultCode.RESULT_COMMAND_ERROR)
 
-        if not os.path.isfile(args.command[2]):
-            print_red("First SBOM file not found!")
+        input_files = args.command[2:]
+        if args.outputfile:
+            output = args.outputfile
+        elif len(input_files) == 3:
+            # backwards compatibility: `bom merge bomfile1 bomfile2 outputfile`
+            output = input_files.pop()
+        elif len(input_files) > 3:
+            print_red("Please use -o/--outputfile to specify the output file "
+                      "when merging more than two SBOM files!")
+            sys.exit(ResultCode.RESULT_COMMAND_ERROR)
+        else:
+            # use first file as output file
+            output = input_files[0]
+
+        # ensure input files exist
+        has_error = False
+        for filepath in input_files:
+            if not os.path.isfile(filepath):
+                print_red(f"SBOM file not found: {filepath}")
+                has_error = True
+        if has_error:
             sys.exit(ResultCode.RESULT_FILE_NOT_FOUND)
 
-        if not os.path.isfile(args.command[3]):
-            print_red("Second SBOM file not found!")
-            sys.exit(ResultCode.RESULT_FILE_NOT_FOUND)
-
-        output = args.command[2]
-        if len(args.command) == 5:
-            output = args.command[4]
-
-        print_text("Loading first SBOM file", args.command[2])
+        print_text("Loading first SBOM file", input_files[0])
         try:
-            bom_old = CaPyCliBom.read_sbom(args.command[2])
+            bom_merged = CaPyCliBom.read_sbom(input_files[0])
         except Exception as ex:
             print_red("Error reading input SBOM file: " + repr(ex))
             sys.exit(ResultCode.RESULT_ERROR_READING_BOM)
-        print_text(" ", self.get_comp_count_text(bom_old), "read from SBOM")
+        print_text(" ", self.get_comp_count_text(bom_merged), "read from SBOM")
 
-        print_text("Loading second SBOM file", args.command[3])
-        try:
-            bom_new = CaPyCliBom.read_sbom(args.command[3])
-        except Exception as ex:
-            print_red("Error reading input SBOM file: " + repr(ex))
-            sys.exit(ResultCode.RESULT_ERROR_READING_BOM)
-        print_text(" ", self.get_comp_count_text(bom_new), "read from SBOM")
-
-        bom_merged = self.merge_boms(bom_old, bom_new)
+        for filepath in input_files[1:]:
+            print_text("Loading SBOM file", filepath)
+            try:
+                bom_next = CaPyCliBom.read_sbom(filepath)
+            except Exception as ex:
+                print_red("Error reading input SBOM file: " + repr(ex))
+                sys.exit(ResultCode.RESULT_ERROR_READING_BOM)
+            print_text(" ", self.get_comp_count_text(bom_next), "read from SBOM")
+            bom_merged = self.merge_boms(bom_merged, bom_next)
 
         print_text("Writing combined SBOM with", self.get_comp_count_text(bom_merged), "to", output)
         try:

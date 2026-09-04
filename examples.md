@@ -382,7 +382,7 @@ Loading second SBOM file .\dummy_new.bom
   New release:                 RazorEngine, 3.12.0
 ```
 
-#### Merge two bills or material (BOM)
+#### Merge two or more bills or material (BOM)
 
 Command:
 
@@ -393,14 +393,24 @@ capycli bom merge .\dummy.bom .\dummy_new.bom .\merged_bom.json
 Result:
 
 ```sh
-CaPyCli - merge two SBOM files.
+CaPyCli - Merge SBOM files.
 
 Loading first SBOM file .\dummy.bom
   44 components read from SBOM
-Loading second SBOM file .\dummy_new.bom
+Loading SBOM file .\dummy_new.bom
   40 components read from SBOM
-Combined SBOM with 46 written to .\merged_bom.json
+Writing combined SBOM with 46 components to .\merged_bom.json
 ```
+
+More than two SBOM files can be merged, but then the output file must be
+specified via `-o`:
+
+```sh
+capycli bom merge .\dummy.bom .\dummy_new.bom .\dummy_third.bom -o .\merged_bom.json
+```
+
+Without `-o` and without a third positional argument the result overwrites
+the first SBOM file.
 
 #### Create a HTML page showing the mapping result
 
