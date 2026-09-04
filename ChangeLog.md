@@ -5,6 +5,11 @@
 
 # CaPyCli - Clearing Automation Python Command Line Tool for SW360
 
+## Unreleased
+
+* `bom merge` can now merge more than two SBOM files. For more than two input
+  files the output file has to be specified via `-o`.
+
 ## 2.12.0
 
 * Because of security reasons `-client_id` and `-client_secret` should only

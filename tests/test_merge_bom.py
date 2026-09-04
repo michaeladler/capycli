@@ -7,6 +7,7 @@
 # -------------------------------------------------------------------------------
 
 import os
+import shutil
 
 from capycli.bom.merge_bom import MergeBom
 from capycli.common.capycli_bom_support import CaPyCliBom, CycloneDxSupport
@@ -150,7 +151,7 @@ class TestMergeBom(TestBase):
         self.assertTrue(outputfile in out)
         self.assertTrue("Loading first SBOM file" in out)
         self.assertTrue("sbom_for_download.json" in out)
-        self.assertTrue("Loading second SBOM file" in out)
+        self.assertTrue("Loading SBOM file" in out)
         self.assertTrue("Writing combined SBOM with 1 component to" in out)
 
         bom = CaPyCliBom.read_sbom(outputfile)
@@ -176,7 +177,7 @@ class TestMergeBom(TestBase):
         self.assertTrue(outputfile in out)
         self.assertTrue("Loading first SBOM file" in out)
         self.assertTrue("sbom_for_download.json" in out)
-        self.assertTrue("Loading second SBOM file" in out)
+        self.assertTrue("Loading SBOM file" in out)
         self.assertTrue("Writing combined SBOM with 2 components to" in out)
 
         bom = CaPyCliBom.read_sbom(outputfile)
@@ -208,6 +209,151 @@ class TestMergeBom(TestBase):
         self.assertEqual(1, len(bom.components[1].properties))
 
         self.delete_file(outputfile)
+
+    def test_merge_three_boms(self) -> None:
+        """Test merging three SBOM files, output file specified via -o."""
+        sut = MergeBom()
+
+        # create argparse command line argument object
+        args = AppArguments()
+        args.command = []
+        args.command.append("bom")
+        args.command.append("merge")
+        args.command.append(os.path.join(os.path.dirname(__file__), "fixtures", self.INPUTFILE1))
+        args.command.append(os.path.join(os.path.dirname(__file__), "fixtures", self.INPUTFILE2))
+        args.command.append(os.path.join(os.path.dirname(__file__), "fixtures", self.INPUTFILE1))
+        outputfile = self.OUTPUTFILE
+        args.outputfile = outputfile
+        self.delete_file(outputfile)
+
+        try:
+            out = self.capture_stdout(sut.run, args)
+            self.assertTrue("Loading first SBOM file" in out)
+            self.assertTrue("Writing combined SBOM with 2 components to" in out)
+
+            bom = CaPyCliBom.read_sbom(outputfile)
+            # INPUTFILE1 has 1 component, INPUTFILE2 has 1 different component, third is duplicate of first
+            self.assertEqual(2, len(bom.components))
+        finally:
+            self.delete_file(outputfile)
+
+    def test_merge_three_boms_without_outputfile(self) -> None:
+        """Merging more than two SBOM files requires -o."""
+        sut = MergeBom()
+
+        args = AppArguments()
+        args.command = []
+        args.command.append("bom")
+        args.command.append("merge")
+        args.command.append(os.path.join(os.path.dirname(__file__), "fixtures", self.INPUTFILE1))
+        args.command.append(os.path.join(os.path.dirname(__file__), "fixtures", self.INPUTFILE2))
+        args.command.append(os.path.join(os.path.dirname(__file__), "fixtures", self.INPUTFILE1))
+        args.command.append(os.path.join(os.path.dirname(__file__), "fixtures", self.INPUTFILE2))
+
+        try:
+            self.capture_stdout(sut.run, args)
+            self.assertTrue(False, "Failed to report missing output file")
+        except SystemExit as ex:
+            self.assertEqual(ResultCode.RESULT_COMMAND_ERROR, ex.code)
+
+    def test_merge_overwrite_first_bom(self) -> None:
+        """Test merging SBOM files without specifying output file (overwriting first)."""
+        sut = MergeBom()
+        temp_input = "temp_input_for_merge.json"
+        shutil.copyfile(os.path.join(os.path.dirname(__file__), "fixtures", self.INPUTFILE1), temp_input)
+
+        try:
+            args = AppArguments()
+            args.command = []
+            args.command.append("bom")
+            args.command.append("merge")
+            args.command.append(temp_input)
+            args.command.append(os.path.join(os.path.dirname(__file__), "fixtures", self.INPUTFILE2))
+
+            out = self.capture_stdout(sut.run, args)
+            self.assertTrue("Writing combined SBOM with 2 components to " + temp_input in out)
+
+            bom = CaPyCliBom.read_sbom(temp_input)
+            self.assertEqual(2, len(bom.components))
+        finally:
+            self.delete_file(temp_input)
+
+    def test_merge_three_boms_overwrite_first_bom(self) -> None:
+        """Merging three SBOM files with -o pointing to the first input file."""
+        sut = MergeBom()
+        temp_input = "temp_input_for_merge.json"
+        shutil.copyfile(os.path.join(os.path.dirname(__file__), "fixtures", self.INPUTFILE1), temp_input)
+
+        try:
+            args = AppArguments()
+            args.command = []
+            args.command.append("bom")
+            args.command.append("merge")
+            args.command.append(temp_input)
+            args.command.append(os.path.join(os.path.dirname(__file__), "fixtures", self.INPUTFILE2))
+            args.command.append(os.path.join(os.path.dirname(__file__), "fixtures", self.INPUTFILE1))
+            args.outputfile = temp_input
+
+            out = self.capture_stdout(sut.run, args)
+            self.assertTrue("Writing combined SBOM with 2 components to " + temp_input in out)
+
+            bom = CaPyCliBom.read_sbom(temp_input)
+            self.assertEqual(2, len(bom.components))
+        finally:
+            self.delete_file(temp_input)
+
+    def test_merge_twice_does_not_modify_input(self) -> None:
+        """Running the very same merge command twice must not modify the input files."""
+        sut = MergeBom()
+        temp_input = "temp_input_for_merge.json"
+        outputfile = self.OUTPUTFILE
+        shutil.copyfile(os.path.join(os.path.dirname(__file__), "fixtures", self.INPUTFILE1), temp_input)
+
+        try:
+            args = AppArguments()
+            args.command = []
+            args.command.append("bom")
+            args.command.append("merge")
+            args.command.append(temp_input)
+            args.command.append(os.path.join(os.path.dirname(__file__), "fixtures", self.INPUTFILE2))
+            args.command.append(outputfile)
+
+            self.capture_stdout(sut.run, args)
+            self.assertEqual(1, len(CaPyCliBom.read_sbom(temp_input).components))
+
+            # second run: outputfile now exists, but it is still the output file
+            out = self.capture_stdout(MergeBom().run, args)
+            self.assertTrue("Writing combined SBOM with 2 components to " + outputfile in out)
+            self.assertEqual(1, len(CaPyCliBom.read_sbom(temp_input).components))
+            self.assertEqual(2, len(CaPyCliBom.read_sbom(outputfile).components))
+        finally:
+            self.delete_file(temp_input)
+            self.delete_file(outputfile)
+
+    def test_all_missing_input_files_are_reported(self) -> None:
+        sut = MergeBom()
+
+        args = AppArguments()
+        args.command = []
+        args.command.append("bom")
+        args.command.append("merge")
+        args.command.append("DOESNOTEXIST1")
+        args.command.append("DOESNOTEXIST2")
+
+        # capture_stdout() does not catch SystemExit, so swallow it here to keep the output
+        exit_code = None
+
+        def run() -> None:
+            nonlocal exit_code
+            try:
+                sut.run(args)
+            except SystemExit as ex:
+                exit_code = ex.code
+
+        out = self.capture_stdout(run)
+        self.assertEqual(ResultCode.RESULT_FILE_NOT_FOUND, exit_code)
+        self.assertTrue("SBOM file not found: DOESNOTEXIST1" in out)
+        self.assertTrue("SBOM file not found: DOESNOTEXIST2" in out)
 
 
 if __name__ == '__main__':

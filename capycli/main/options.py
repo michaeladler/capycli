@@ -46,7 +46,7 @@ class CommandlineSupport():
         DownloadSources   download source files from the URL specified in the SBOM
         Granularity       check a bill of material for potential component granularity issues
         Diff              compare two bills of material
-        Merge             merge two bills of material
+        Merge             merge two or more bills of material
         Findsources       determine the source code for SBOM items
         Validate          validate an SBOM
         BomPackage        create a single archive that contains the SBOM and all source and binary files
